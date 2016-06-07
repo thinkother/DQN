@@ -4,168 +4,28 @@ from bokeh.plotting import figure, show, output_file, vplot
 import cupy
 from chainer import cuda
 
-from QModel import *
-from Replay import *
-
-
-class State:
-
-    def __init__(self, _list_idx, _tick, _position_list, _in_game):
-        self.list_idx = _list_idx
-        self.tick = _tick
-        self.position_list = _position_list[:]
-        self.in_game = _in_game
-
-    def show(self):
-        print 'list_idx:', self.list_idx, 'tick:', self.tick, 'position:'
-        for position in self.position_list:
-            position.show()
-        print 'in_game:', self.in_game
-
-
-class PositionTuple:
-
-    def __init__(self, _open_price, _direction):
-        self.open_price = _open_price
-        self.direction = _direction
-        self.price_list = []
-
-    def show(self):
-        print '\t\topen_price:', self.open_price, 'direction:', self.direction, 'length:', len(self.price_list)
-        print '\t\tprice_list:'
-        if len(self.price_list) > 6:
-            for i in self.price_list[:3]:
-                print '\t\t\t', i
-            print '\t\t\t ...'
-            for i in self.price_list[-3:]:
-                print '\t\t\t', i
-        else:
-            for i in self.price_list:
-                print '\t\t\t', i
+from Model import *
 
 
 class Agent():
 
-    def __init__(self, _params, _X_list, _Y_list, _memory=None, _is_train=True):
-        self.X_list = _X_list
-        self.Y_list = _Y_list
-        self.params = _params
-        self.position_list = []
-        self.X = None
-        self.Y = None
+    def __init__(self, _config, _env, _replay=None, _pre_model=None):
+        self.config = _config
+        self.env = _env
+        self.replay = _replay
 
-        if _is_train:
-            self.memory_pool = _memory
-            self.q_func, self.target_q_func = buildModel(
-                # self.params, './models/during_25000')
-                self.params)
-            self.q_func.training()
-            self.target_q_func.evaluating()
-            if self.params['gpu']:
-                self.q_func.to_gpu()
-                self.target_q_func.to_gpu()
-            self.optimizer = optimizers.RMSprop()
-            self.optimizer.setup(self.q_func)
-
-            self.in_game = False
-
-    def startNewGame(self):
-        self.k = random.randint(0, self.params['K'] - 1)
-        self.list_idx = random.randint(0, len(self.X_list) - 1)
-        self.X = self.X_list[self.list_idx]
-        self.Y = self.Y_list[self.list_idx]
-        tick_idx = random.randint(self.params['begin_tick'],
-                                  self.X.shape[0] + self.params['end_tick'])
-        print '@@@ NEW GAME start at:', self.list_idx, tick_idx
-        self.tick = tick_idx
-        self.position_list = []
-        self.in_game = True
+        self.q_func, self.target_q_func = buildModel(_config, _pre_model)
 
     def step(self):
-        if not self.in_game:
-            self.startNewGame()
+        if not self.env.in_game:
+            self.env.startNewGame()
 
         # get cur_state
-        cur_state = self.getState()
+        cur_state = self.env.getState()
 
         # choose action in step
         action = self.chooseAction(self.q_func)
 
-        # get cur and next prices
-        lastprice, bidprice, askprice = self.getY(self.Y, self.tick)
-
-        # get reward and update position_list
-        reward = 0
-        if action == 0:
-            # hold on
-            if not len(self.position_list):
-                reward = self.getReward()
-                self.in_game = False
-            if len(self.position_list) and self.position_list[0].direction == -1:
-                # position is not empty and direction is sell
-                self.position_list[0].price_list.append(askprice.tolist())
-            if len(self.position_list) and self.position_list[0].direction == 1:
-                # position is not empty and direction is buy
-                self.position_list[0].price_list.append(bidprice.tolist())
-            if self.params['stop_game']:
-                if len(self.position_list) and len(self.position_list[0].price_list) > self.params['stop_game']:
-                    print '&&& STOP GAME'
-                    if self.position_list[0].direction == 1:
-                        action = 2
-                    if self.position_list[0].direction == -1:
-                        action = 1
-                    reward = self.getReward()
-                    self.position_list = self.position_list[1:]
-                    self.in_game = False
-        elif action == 1:
-            # buy
-            if len(self.position_list) and self.position_list[0].direction == -1:
-                # close position
-                self.position_list[0].price_list.append(askprice.tolist())
-                reward = self.getReward()
-                self.position_list = self.position_list[1:]
-                self.in_game = False
-            else:
-                # open position
-                self.position_list.append(PositionTuple(askprice.tolist(), 1))
-
-        elif action == 2:
-            # sell
-            if len(self.position_list) and self.position_list[0].direction == 1:
-                # close position
-                self.position_list[0].price_list.append(bidprice.tolist())
-                reward = self.getReward()
-                self.position_list = self.position_list[1:]
-                self.in_game = False
-            else:
-                # open position
-                self.position_list.append(PositionTuple(bidprice.tolist(), -1))
-        else:
-            raise Exception()
-
-        if len(self.position_list):
-            tmp = self.position_list[0].direction
-            tmp_2 = self.position_list[0].open_price
-            print '\t!!! STEP k:', self.k, 'action:', action, 'direction:', tmp, \
-                'diff', (askprice - tmp_2 if tmp == -1 else bidprice - tmp_2) * tmp
-        else:
-            print '\t!!! STEP k:', self.k, 'action:', action
-
-        # add tick and get next_state
-        self.tick += 1
-        if self.tick > self.X.shape[0] + self.params['end_game_tick']:
-            # if arrive end tick ,exit game
-            print '&&& ARRIVE END'
-            self.in_game = False
-        else:
-            next_state = self.getState()
-            if random.random() < self.params['replay_p']:
-                # store replay_tuple into memory pool
-                replay_tuple = ReplayTuple(
-                    cur_state, action, reward, next_state,
-                    np.random.binomial(1, self.params['p'], (self.params['K']))
-                )
-                self.memory_pool.push(replay_tuple)
 
     def train(self):
         # clear grads
@@ -298,29 +158,18 @@ class Agent():
 
         return np.mean([t.err for t in batch_tuples])
 
-    def chooseAction(self, _model):
-        self.params['epsilon'] = max(
-            0, self.params['epsilon'] - self.params['epsilon_decay'])
+    def chooseAction(self, _model, _state):
+        self.config.epsilon = max(
+            self.config.epsilon_underline,
+            self.config.epsilon * self.config.epsilon_decay
+        )
         random_value = random.random()
-        if random_value < self.params['epsilon']:
-            if len(self.position_list):
-                action = random.randint(0, 1)
-                if self.position_list[0].direction == 1 and action == 1:
-                    action = 2
-                return action
-            else:
-                return random.randint(0, 2)
+        if random_value < self.config.epsilon:
+            return self.env.randomChooseAction(_state)
         else:
-            x_data = self.getX(self.X, self.tick)
-            lastprice, bidprice, askprice = self.getY(self.Y, self.tick)
-            posit_x_data = self.getPositX(lastprice, bidprice, askprice,
-                                          self.tick, self.position_list)
-            x_data = x_data.reshape((1, x_data.shape[0], x_data.shape[1]))
-            posit_x_data = posit_x_data.reshape((1, posit_x_data.shape[0]))
-            output = self.QFunc(_model, x_data, posit_x_data)
-            return self.getBestAction(
-                output[self.k].data,
-                [self.position_list])[0]
+            x_data = self.env.getX(_state)
+            output = self.QFunc(_model, x_data)
+            return self.env.chooseBestAction(output, [_state])[0]
 
     def getState(self):
         return State(self.list_idx, self.tick, self.position_list, self.in_game)
@@ -366,8 +215,13 @@ class Agent():
     def getY(self, _Y, _tick):
         return _Y[_tick]
 
-    def QFunc(self, _model, _x_data, _posit_x_data):
-        return _model(Variable(_x_data), Variable(_posit_x_data))
+    def QFunc(self, _model, _x_data):
+        def toVariable(_data):
+            if type(_data) is list:
+                return [toVariable(d) for d in _data]
+            else:
+                return Variable(_data)
+        return _model(toVariable(_x_data))
 
     def getBestAction(self, _output, _position_list_list):
         action_list = []
@@ -460,13 +314,7 @@ class Agent():
 
         for tick in range(self.params['begin_tick'], self.params['end_tick']):
             x_data = self.getX(self.X, tick)
-            x_data = x_data.reshape((1, x_data.shape[0], x_data.shape[1]))
-            lastprice, bidprice, askprice = self.getY(self.Y, tick)
-            posit_x_data = self.getPositX(lastprice, bidprice, askprice,
-                                          tick, self.position_list)
-            posit_x_data = posit_x_data.reshape((1, posit_x_data.shape[0]))
-
-            output = self.QFunc(self.q_func, x_data, posit_x_data)
+            output = self.QFunc(self.q_func, x_data)
             action_list = [0] * 3
             for o in output:
                 print o.data
