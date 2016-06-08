@@ -78,3 +78,6 @@ class Replay():
         print '!!! memory_pool !!!'
         for t in self.memory_pool:
             t.show()
+
+    def getPoolSize(self):
+        return len(self.memory_pool)
