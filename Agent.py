@@ -1,25 +1,28 @@
-import random
-from chainer import serializers
-from bokeh.plotting import figure, show, output_file, vplot
-import cupy
-from chainer import cuda
-
+import Config
 from Model import *
 from Replay import ReplayTuple
+
+import random
+from chainer import serializers
+if Config.gpu:
+    import cupy
+from chainer import cuda
+
+import logging
 
 
 class Agent():
 
-    def __init__(self, _config, _env, _replay=None, _pre_model=None):
-        self.config = _config
+    def __init__(self, _env, _replay=None, _pre_model=None):
         self.env = _env
         self.replay = _replay
 
         # model for train, model for target
-        self.q_func, self.target_q_func = buildModel(_config, _pre_model)
+        self.q_func, self.target_q_func = buildModel(_pre_model)
 
     def step(self):
         if not self.env.in_game:
+            logging.info('Env not in game')
             self.env.startNewGame()
 
         # get current state
@@ -32,12 +35,12 @@ class Agent():
         next_state = self.env.getState()
 
         # randomly decide to store tuple into pool
-        if random.random() < self.config.replay_p:
+        if random.random() < Config.replay_p:
             # store replay_tuple into memory pool
             replay_tuple = ReplayTuple(
                 cur_state, action, reward, next_state,
                 # get mask for bootstrap
-                np.random.binomial(1, self.config.p, (self.config.K))
+                np.random.binomial(1, Config.p, (Config.K))
             )
             self.replay.push(replay_tuple)
 
@@ -46,7 +49,7 @@ class Agent():
         self.q_func.zerograds()
 
         # pull tuples from memory pool
-        batch_tuples = self.replay.pull(self.config.batch_size)
+        batch_tuples = self.replay.pull(Config.batch_size)
         if not len(batch_tuples):
             return
 
@@ -54,7 +57,7 @@ class Agent():
         cur_x = [self.env.getX(t.state) for t in batch_tuples]
         next_x = [self.env.getX(t.next_state) for t in batch_tuples]
         # merge inputs into one array
-        if self.config.gpu:
+        if Config.gpu:
             cur_x = [cupy.expand_dims(t, 0) for t in cur_x]
             cur_x = cupy.concatenate(cur_x, 0)
             next_x = [cupy.expand_dims(t, 0) for t in next_x]
@@ -84,23 +87,23 @@ class Agent():
         err_count_list = [0.] * len(batch_tuples)
         # compute grad's weights
         weights = np.array([t.P for t in batch_tuples], np.float32)
-        if self.config.gpu:
+        if Config.gpu:
             weights = cuda.to_gpu(weights)
         if self.replay.getPoolSize():
             weights *= self.replay.getPoolSize()
-        weights = weights ** -self.config.beta
+        weights = weights ** -Config.beta
         weights /= weights.max()
-        if self.config.gpu:
+        if Config.gpu:
             weights = cupy.expand_dims(weights, 1)
         else:
             weights = np.expand_dims(weights, 1)
 
         # update beta
-        self.config.beta = min(1, self.config.beta + self.config.beta_add)
+        Config.beta = min(1, Config.beta + Config.beta_add)
 
         # compute grad for each head
-        for k in range(self.config.K):
-            if self.config.gpu:
+        for k in range(Config.K):
+            if Config.gpu:
                 cur_output[k].grad = cupy.zeros_like(cur_output[k].data)
             else:
                 cur_output[k].grad = np.zeros_like(cur_output[k].data)
@@ -115,7 +118,8 @@ class Agent():
                     target_value = reward
                     # if not empty position, not terminal state
                     if batch_tuples[i].next_state.in_game:
-                        target_value += self.params['gamma'] * next_action_value
+                        target_value += self.params['gamma'] * \
+                            next_action_value
                     loss = cur_action_value - target_value
                     cur_output[k].grad[i][batch_tuples[i].action] = 2 * loss
                     # count err
@@ -137,7 +141,7 @@ class Agent():
 
         # adjust grads
         for param in self.q_func.shared.params():
-            param.grad /= self.config.K
+            param.grad /= Config.K
 
         # update params
         self.optimizer.update()
@@ -147,18 +151,18 @@ class Agent():
             if err_count_list[i] > 0:
                 batch_tuples[i].err /= err_count_list[i]
 
-        self.replay.merge(self.config.alpha)
+        self.replay.merge(Config.alpha)
 
         return np.mean([t.err for t in batch_tuples])
 
     def chooseAction(self, _model, _state):
         # update epsilon
-        self.config.epsilon = max(
-            self.config.epsilon_underline,
-            self.config.epsilon * self.config.epsilon_decay
+        Config.epsilon = max(
+            Config.epsilon_underline,
+            Config.epsilon * Config.epsilon_decay
         )
         random_value = random.random()
-        if random_value < self.config.epsilon:
+        if random_value < Config.epsilon:
             # randomly choose
             return self.env.getRandomAction(_state)
         else:

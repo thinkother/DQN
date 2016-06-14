@@ -1,5 +1,5 @@
 import numpy as np
-
+import Config
 
 class ReplayTuple:
 
@@ -28,8 +28,8 @@ class ReplayTuple:
 
 class Replay():
 
-    def __init__(self, _N):
-        self.N = _N
+    def __init__(self):
+        self.N = Config.N
         self.memory_pool = []
         self.tmp_memory_pool = []
 

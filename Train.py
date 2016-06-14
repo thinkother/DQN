@@ -1,0 +1,19 @@
+import Config
+import logging
+
+
+class Train:
+
+    def __init__(self, _agent):
+        self.agent = _agent
+        self.step_count = 0
+
+    def run(self):
+        while self.step_count < Config.step_total:
+            logging.info('Step :' + str(self.step_count + 1))
+            self.agent.step()
+            self.step_count += 1
+            if not step_count % Config.step_train:
+                self.agent.train()
+            if not step_count % Config.step_save:
+                self.agent.save()

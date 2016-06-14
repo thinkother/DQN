@@ -1,6 +1,13 @@
 from Agent import *
 from Env import *
-from Config import *
+import Config
 from Replay import *
+from Train import Train
+import logging
 
-agent = Agent(Config(), Env(), Replay())
+FORMAT = '%(asctime)s - %(levelname)s - %(filename)s - %(funcName)s - %(message)s'
+logging.basicConfig(format=FORMAT, level=logging.DEBUG)
+
+agent = Agent(Env(), Replay())
+train = Train(agent)
+train.run()

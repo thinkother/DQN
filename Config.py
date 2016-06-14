@@ -1,11 +1,18 @@
-class Config:
+# config for bootstrap
+K = 10  # head number
+p = 0.5  # for mask
 
-    def __init__():
-        self.K = 10
-        self.p = 0.5
+epsilon = 0.5
+epsilon_decay = 0.99
+epsilon_underline = 0
 
-        self.epsilon = 0.5
-        self.epsilon_decay = 0.99
-        self.epsilon_underline = 0
+N = 10000
 
-        self.gpu = False
+gpu = False
+
+step_total = 1e8
+step_train = 1
+step_save = 10000
+
+# config for env
+state_num = 10

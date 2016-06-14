@@ -1,7 +1,13 @@
+import logging
+
+##########################################
+## simple env in bootstrap DQN for demo ##
+##########################################
+
 class State:
 
-    def __init__(self):
-        pass
+    def __init__(self, _in_game, _index):
+        self.in_game = _in_game
 
     def show(self):
         pass
@@ -14,11 +20,12 @@ class Env:
 
     def startNewGame(self):
         self.in_game = True
+        logging.info('Start new game')
 
     def getState(self):
-        return
+        return State(self.in_game)
 
-    def doAction(self):
+    def doAction(self, _action):
         pass
 
     def getX(self):

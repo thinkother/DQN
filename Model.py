@@ -6,12 +6,11 @@ from chainer import optimizers
 from chainer import Chain, ChainList
 import chainer.serializers as S
 import chainer.computational_graph as c
-
+import Config
 
 class Shared(Chain):
 
-    def __init__(self, _config):
-        self.config = _config
+    def __init__(self):
         super(Shared, self).__init__(
 
         )
@@ -23,8 +22,7 @@ class Shared(Chain):
 
 class Head(Chain):
 
-    def __init__(self, _config):
-        self.config = _config
+    def __init__(self):
         super(Head, self).__init__(
 
         )
@@ -36,11 +34,10 @@ class Head(Chain):
 
 class Model(ChainList):
 
-    def __init__(self, _config):
+    def __init__(self):
         self.is_train = True
-        self.config = _config
-        self.shared = Shared(self.config)
-        self.head_list = [Head(self.config) for _ in self.config.K]
+        self.shared = Shared()
+        self.head_list = [Head() for _ in range(Config.K)]
 
         super(Model, self).__init__(*(self.head_list + [self.shared]))
 
@@ -56,8 +53,8 @@ class Model(ChainList):
         self.is_train = False
 
 
-def buildModel(_config, _pre_model=None):
-    q_func = Model(_params)
+def buildModel(_pre_model=None):
+    q_func = Model()
     if _pre_model:
         S.load_npz(_pre_model, q_func)
     target_q_func = q_func.copy()
