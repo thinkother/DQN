@@ -1,6 +1,8 @@
 import logging
 import numpy as np
-import cupy
+import Config
+if Config.gpu:
+    import cupy
 
 ##########################################
 ## simple env in bootstrap DQN for demo ##

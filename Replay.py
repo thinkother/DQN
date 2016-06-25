@@ -17,19 +17,19 @@ class ReplayTuple:
         print '----- begin -----'
         self.state.show()
         self.next_state.show()
-        print 'mask: ', self.mask
-        print 'action: ', self.action
-        print 'reward: ', self.reward
-        print 'P: ', self.P
+        print 'mask:', self.mask
+        print 'action:', self.action
+        print 'reward:', self.reward
+        print 'P:', self.P
         print 'p:', self.p
-        print 'err: ', self.err
+        print 'err:', self.err
         print '----- end -----'
 
 
 class Replay():
 
     def __init__(self):
-        self.N = Config.N
+        self.N = Config.replay_N
         self.memory_pool = []
         self.tmp_memory_pool = []
 

@@ -19,18 +19,27 @@ class DemoEnv(Env):
 
     def doStartNewGame(self):
         self.loc = 1
+        self.count = 0
 
     def doGetState(self):
         return {'loc': self.loc}
 
     def doDoAction(self, _action):
+        if _action == 1:  # a difficlut case
+            if random.random() < 0.5:
+                _action = 0
         if _action == 0:  # go left
             self.loc = max(0, self.loc - 1)
         if _action == 1:  # go right
-            self.loc = min(Config.loc_num, self.loc + 1)
+            self.loc = min(5, self.loc + 1)
+
+        self.count += 1
+        if self.count >= 15:
+            self.in_game = False
+
         if self.loc == 0:
             return 0.001
-        if self.loc == Config.loc_num:
+        if self.loc == 5:
             return 1
         return 0
 

@@ -28,6 +28,7 @@ class Agent(object):
             logging.info('Env not in game')
             self.env.startNewGame()
             self.use_head = random.randint(0, Config.K - 1)
+            logging.info('Use head: ' + str(self.use_head))
 
         # get current state
         cur_state = self.env.getState()
@@ -46,7 +47,7 @@ class Agent(object):
             replay_tuple = ReplayTuple(
                 cur_state, action, reward, next_state,
                 # get mask for bootstrap
-                np.random.binomial(1, Config.p, (Config.K))
+                np.random.binomial(1, Config.p, (Config.K)).tolist()
             )
             self.replay.push(replay_tuple)
 
@@ -91,6 +92,7 @@ class Agent(object):
             t.err = 0.
         # store err count
         err_count_list = [0.] * len(batch_tuples)
+
         # compute grad's weights
         weights = np.array([t.P for t in batch_tuples], np.float32)
         if Config.gpu:
@@ -115,7 +117,7 @@ class Agent(object):
                 cur_output[k].grad = np.zeros_like(cur_output[k].data)
             # compute grad from each tuples
             for i in range(len(batch_tuples)):
-                if batch_tuples[i].mask[k].tolist():
+                if batch_tuples[i].mask[k]:
                     cur_action_value = \
                         cur_output[k].data[i][batch_tuples[i].action].tolist()
                     reward = batch_tuples[i].reward
@@ -132,7 +134,7 @@ class Agent(object):
                         batch_tuples[i].err += abs(loss / cur_action_value)
                         err_count_list[i] += 1
 
-            # multiply weights with grad
+            # multiply weights with grad and clip
             if Config.gpu:
                 cur_output[k].grad = cupy.multiply(
                     cur_output[k].grad, weights)
@@ -144,7 +146,7 @@ class Agent(object):
             # backward
             cur_output[k].backward()
 
-        # adjust grads
+        # adjust grads of shared
         for param in self.q_func.shared.params():
             param.grad /= Config.K
 
@@ -184,8 +186,8 @@ class Agent(object):
                 return Variable(_data)
         return _model(toVariable(_x_data))
 
-    def update_target_q_func(self):
+    def updateTargetQFunc(self):
         self.target_q_func.copyparams(self.q_func)
 
-    def save(self, _during):
-        serializers.save_npz('./models/during_' + str(_during), self.q_func)
+    def save(self, _step):
+        serializers.save_npz('./models/step_' + str(_step), self.q_func)
