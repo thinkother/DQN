@@ -2,7 +2,7 @@ import Config
 import logging
 
 
-class Train:
+class Train(object):
 
     def __init__(self, _agent):
         self.agent = _agent
@@ -10,10 +10,10 @@ class Train:
 
     def run(self):
         while self.step_count < Config.step_total:
-            logging.info('Step :' + str(self.step_count + 1))
+            logging.info('Step: ' + str(self.step_count + 1))
             self.agent.step()
             self.step_count += 1
-            if not step_count % Config.step_train:
+            if not self.step_count % Config.step_train:
                 self.agent.train()
-            if not step_count % Config.step_save:
+            if not self.step_count % Config.step_save:
                 self.agent.save()

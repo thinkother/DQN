@@ -3,7 +3,7 @@ from Model import *
 from Replay import ReplayTuple
 
 import random
-from chainer import serializers
+from chainer import serializers, optimizers
 if Config.gpu:
     import cupy
 from chainer import cuda
@@ -11,19 +11,23 @@ from chainer import cuda
 import logging
 
 
-class Agent():
+class Agent(object):
 
-    def __init__(self, _env, _replay=None, _pre_model=None):
+    def __init__(self, _shared, _head, _env, _replay=None, _pre_model=None):
         self.env = _env
         self.replay = _replay
 
         # model for train, model for target
-        self.q_func, self.target_q_func = buildModel(_pre_model)
+        self.q_func, self.target_q_func = buildModel(
+            _shared, _head, _pre_model=None)
+        self.optimizer = optimizers.Adam()
+        self.optimizer.setup(self.q_func)
 
     def step(self):
         if not self.env.in_game:
             logging.info('Env not in game')
             self.env.startNewGame()
+            self.use_head = random.randint(0, Config.K - 1)
 
         # get current state
         cur_state = self.env.getState()
@@ -33,6 +37,8 @@ class Agent():
         reward = self.env.doAction(action)
         # get new state
         next_state = self.env.getState()
+
+        logging.info('Action: ' + str(action) + '; Reward: ' + str(reward))
 
         # randomly decide to store tuple into pool
         if random.random() < Config.replay_p:
@@ -118,8 +124,7 @@ class Agent():
                     target_value = reward
                     # if not empty position, not terminal state
                     if batch_tuples[i].next_state.in_game:
-                        target_value += self.params['gamma'] * \
-                            next_action_value
+                        target_value += Config.gamma * next_action_value
                     loss = cur_action_value - target_value
                     cur_output[k].grad[i][batch_tuples[i].action] = 2 * loss
                     # count err
@@ -128,7 +133,7 @@ class Agent():
                         err_count_list[i] += 1
 
             # multiply weights with grad
-            if self.params['gpu']:
+            if Config.gpu:
                 cur_output[k].grad = cupy.multiply(
                     cur_output[k].grad, weights)
                 cur_output[k].grad = cupy.clip(cur_output[k].grad, -1, 1)
@@ -169,7 +174,7 @@ class Agent():
             # use model to choose
             x_data = self.env.getX(_state)
             output = self.QFunc(_model, x_data)
-            return self.env.getBestAction(output, [_state])[0]
+            return self.env.getBestAction(output[self.use_head].data, [_state])[0]
 
     def QFunc(self, _model, _x_data):
         def toVariable(_data):
